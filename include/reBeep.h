@@ -7,8 +7,8 @@
  *
 */
 
-#ifndef _RBEEP32_H_
-#define _RBEEP32_H_
+#ifndef __RE_BEEP_H__
+#define __RE_BEEP_H__
 
 #include <stdint.h>
 
@@ -24,4 +24,4 @@ bool beepTaskPlay(const uint16_t frequency, const uint16_t duration, const uint8
 }
 #endif
 
-#endif // _RBEEP32_H_
+#endif // __RE_BEEP_H__
