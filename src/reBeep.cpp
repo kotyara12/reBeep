@@ -7,12 +7,8 @@
 #include "driver/gpio.h"
 #include "esp_task_wdt.h"
 #include "driver/ledc.h"
-
-#define CONFIG_BEEP_QUEUE_SIZE 3
-#define CONFIG_BEEP_QUEUE_WAIT 10
-#define CONFIG_BEEP_TASK_STACK_SIZE 2048
-#define CONFIG_BEEP_TASK_PRIORITY 3
-#define CONFIG_BEEP_TASK_CORE 0
+#include "rLog.h"
+#include "def_beep.h"
 
 #define CONFIG_BEEP_TIMER    LEDC_TIMER_0          // timer index (0-3)
 #define CONFIG_BEEP_CHANNEL  LEDC_CHANNEL_0        // channel index (0-7)
@@ -26,9 +22,19 @@ typedef struct {
   uint8_t count;
 } beep_data_t;
 
-QueueHandle_t _queueBeep = NULL;
-TaskHandle_t _taskBeep = NULL;
-uint8_t _pinBuzzer = 0;
+#define BEEP_QUEUE_ITEM_SIZE sizeof(beep_data_t)
+
+static QueueHandle_t _beepQueue = NULL;
+static TaskHandle_t _beepTask = NULL;
+static uint8_t _pinBuzzer = 0;
+static const char* beepTaskName = "buzzer";
+
+#if CONFIG_BEEP_STATIC_ALLOCATION
+static StaticQueue_t _beepQueueBuffer;
+static StaticTask_t _beepTaskBuffer;
+static StackType_t _beepTaskStack[CONFIG_BEEP_TASK_STACK_SIZE];
+static uint8_t _beepQueueStorage[CONFIG_BEEP_QUEUE_SIZE * BEEP_QUEUE_ITEM_SIZE];
+#endif // CONFIG_BEEP_STATIC_ALLOCATION
 
 void beepTaskExec(void *pvParameters)
 {
@@ -55,7 +61,7 @@ void beepTaskExec(void *pvParameters)
   ledc_fade_func_install(0);
   
   while (1) {
-    if (xQueueReceive(_queueBeep, &data, portMAX_DELAY) == pdPASS) {
+    if (xQueueReceive(_beepQueue, &data, portMAX_DELAY) == pdPASS) {
       xLastWakeTime = xTaskGetTickCount();
       for (uint8_t i = 0; i < data.count; i++) {
         // Turn on the sound
@@ -85,43 +91,57 @@ void beepTaskCreate(const uint8_t pinBuzzer)
 {
   _pinBuzzer = pinBuzzer;
   
-  if (!_queueBeep) {
-     _queueBeep = xQueueCreate(CONFIG_BEEP_QUEUE_SIZE, sizeof(beep_data_t));
-    if (!_queueBeep) {
+  if (!_beepQueue) {
+    #if CONFIG_BEEP_STATIC_ALLOCATION
+    _beepQueue = xQueueCreateStatic(CONFIG_BEEP_QUEUE_SIZE, BEEP_QUEUE_ITEM_SIZE, &(_beepQueueStorage[0]), &_beepQueueBuffer);
+    #else
+    _beepQueue = xQueueCreate(CONFIG_BEEP_QUEUE_SIZE, BEEP_QUEUE_ITEM_SIZE);
+    #endif // CONFIG_BEEP_STATIC_ALLOCATION
+    if (!_beepQueue) {
+      rloga_e("Failed to create a queue for buzzer!");
       return;
     }
   };
   
-  if (!_taskBeep) {
-    xTaskCreatePinnedToCore(beepTaskExec, "buzzerBeep", CONFIG_BEEP_TASK_STACK_SIZE, NULL, CONFIG_BEEP_TASK_PRIORITY, &_taskBeep, CONFIG_BEEP_TASK_CORE); 
-    if (!_taskBeep) {
+  if (!_beepTask) {
+    #if CONFIG_BEEP_STATIC_ALLOCATION
+    _beepTask = xTaskCreateStaticPinnedToCore(beepTaskExec, beepTaskName, 
+      CONFIG_BEEP_TASK_STACK_SIZE, nullptr, CONFIG_BEEP_TASK_PRIORITY, _beepTaskStack, &_beepTaskBuffer, CONFIG_BEEP_TASK_CORE); 
+    #else
+    xTaskCreatePinnedToCore(beepTaskExec, beepTaskName, 
+      CONFIG_BEEP_TASK_STACK_SIZE, nullptr, CONFIG_BEEP_TASK_PRIORITY, &_beepTask, CONFIG_BEEP_TASK_CORE); 
+    #endif // CONFIG_BEEP_STATIC_ALLOCATION
+    if (!_beepTask) {
+      rloga_e("Failed to create task for buzzer!");
       beepTaskDelete();
+    } else {
+      rloga_i("Task [ %s ] has been successfully created", beepTaskName);
     };
   };
 }
 
 void beepTaskDelete()
 {
-  if (_taskBeep) {
-    vTaskDelete( _taskBeep);
-     _taskBeep = NULL;
+  if (_beepTask) {
+    vTaskDelete( _beepTask);
+     _beepTask = NULL;
   };
 
-  if (_queueBeep) {
-    vQueueDelete( _queueBeep);
-     _queueBeep = NULL;
+  if (_beepQueue) {
+    vQueueDelete( _beepQueue);
+     _beepQueue = NULL;
   };
 }
 
 bool beepTaskSend(const uint16_t frequency, const uint16_t duration, const uint8_t count)
 {
-  if (!_queueBeep) {
-    beep_data_t data;
+  if (_beepQueue && (frequency > 0) && (duration > 0) && (count > 0)) {
+    static beep_data_t data;
     data.frequency = frequency;
     data.duration = duration;
     data.count = count;
 
-    if (xQueueSend( _queueBeep, &data, CONFIG_BEEP_QUEUE_WAIT) == pdPASS) {
+    if (xQueueSend( _beepQueue, &data, CONFIG_BEEP_QUEUE_WAIT) == pdPASS) {
       return true;
     };
   };

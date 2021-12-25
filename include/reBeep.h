@@ -18,7 +18,7 @@ extern "C" {
 
 void beepTaskCreate(const uint8_t pinBuzzer);
 void beepTaskDelete();
-bool beepTaskPlay(const uint16_t frequency, const uint16_t duration, const uint8_t count);
+bool beepTaskSend(const uint16_t frequency, const uint16_t duration, const uint8_t count);
 
 #ifdef __cplusplus
 }
