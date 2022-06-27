@@ -9,6 +9,7 @@
 #include "driver/ledc.h"
 #include "rLog.h"
 #include "def_beep.h"
+#include "def_tasks.h"
 
 #define CONFIG_BEEP_TIMER    LEDC_TIMER_0          // timer index (0-3)
 #define CONFIG_BEEP_CHANNEL  LEDC_CHANNEL_0        // channel index (0-7)
@@ -106,10 +107,10 @@ void beepTaskCreate(const uint8_t pinBuzzer)
   if (!_beepTask) {
     #if CONFIG_BEEP_STATIC_ALLOCATION
     _beepTask = xTaskCreateStaticPinnedToCore(beepTaskExec, beepTaskName, 
-      CONFIG_BEEP_TASK_STACK_SIZE, nullptr, CONFIG_BEEP_TASK_PRIORITY, _beepTaskStack, &_beepTaskBuffer, CONFIG_BEEP_TASK_CORE); 
+      CONFIG_BEEP_TASK_STACK_SIZE, nullptr, CONFIG_TASK_PRIORITY_BEEP, _beepTaskStack, &_beepTaskBuffer, CONFIG_TASK_CORE_BEEP); 
     #else
     xTaskCreatePinnedToCore(beepTaskExec, beepTaskName, 
-      CONFIG_BEEP_TASK_STACK_SIZE, nullptr, CONFIG_BEEP_TASK_PRIORITY, &_beepTask, CONFIG_BEEP_TASK_CORE); 
+      CONFIG_BEEP_TASK_STACK_SIZE, nullptr, CONFIG_TASK_PRIORITY_BEEP, &_beepTask, CONFIG_TASK_CORE_BEEP); 
     #endif // CONFIG_BEEP_STATIC_ALLOCATION
     if (!_beepTask) {
       rloga_e("Failed to create task for buzzer!");
