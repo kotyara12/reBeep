@@ -1,6 +1,6 @@
 {
   "name": "reBeep",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Library for playing simple sound signals on ESP32",
   "keywords": "beep",
   "authors":

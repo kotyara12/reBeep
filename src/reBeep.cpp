@@ -71,7 +71,7 @@ void beepTaskExec(void *pvParameters)
         ledc_set_duty(ledc_channel.speed_mode, ledc_channel.channel, data.duration);
         ledc_update_duty(ledc_channel.speed_mode, ledc_channel.channel);
         // We are waiting for the specified time
-        vTaskDelayUntil(&xLastWakeTime, (data.duration / portTICK_RATE_MS));
+        vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(data.duration));
         // Turn off the sound
         esp_task_wdt_reset();
         ledc_set_duty(ledc_channel.speed_mode, ledc_channel.channel, 0);
@@ -79,7 +79,7 @@ void beepTaskExec(void *pvParameters)
         // If this is not the last sound in the series, then we are waiting again
         if (i < data.count - 1) {
           esp_task_wdt_reset();
-          vTaskDelayUntil(&xLastWakeTime, (data.duration / portTICK_RATE_MS));
+          vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(data.duration));
         };
       };
     };
