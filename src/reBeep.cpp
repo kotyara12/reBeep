@@ -13,14 +13,17 @@
 
 #define CONFIG_BEEP_TIMER    LEDC_TIMER_0          // timer index (0-3)
 #define CONFIG_BEEP_CHANNEL  LEDC_CHANNEL_0        // channel index (0-7)
-#define CONFIG_BEEP_DUTY     LEDC_TIMER_13_BIT     // resolution of PWM duty
+#define CONFIG_BEEP_DRES     LEDC_TIMER_13_BIT     // resolution of PWM duty
+#define CONFIG_BEEP_DUTY     4096                  // duty
 #define CONFIG_BEEP_FREQ     3000                  // frequency of PWM signal 
 #define CONFIG_BEEP_MODE     LEDC_HIGH_SPEED_MODE  // timer mode
 
 typedef struct {
-  uint16_t frequency;
+  uint16_t frequency1;
+  uint16_t frequency2;
   uint16_t duration;
-  uint8_t count;
+  uint8_t  count;
+  uint16_t duty;
 } beep_data_t;
 
 #define BEEP_QUEUE_ITEM_SIZE sizeof(beep_data_t)
@@ -39,17 +42,17 @@ static uint8_t _beepQueueStorage[CONFIG_BEEP_QUEUE_SIZE * BEEP_QUEUE_ITEM_SIZE];
 
 void beepTaskExec(void *pvParameters)
 {
-  beep_data_t data;
-  TickType_t xLastWakeTime;
-  // Initialize ledc timer
-  ledc_timer_config_t ledc_timer;
-  memset(&ledc_timer, 0, sizeof(ledc_timer));
-  ledc_timer.duty_resolution = CONFIG_BEEP_DUTY;
-  ledc_timer.freq_hz = CONFIG_BEEP_FREQ;           
-  ledc_timer.speed_mode = CONFIG_BEEP_MODE;
-  ledc_timer.timer_num = CONFIG_BEEP_TIMER;
-  ledc_timer_config(&ledc_timer);
-  // Initialize ledc channel
+  // Инициализация LEDC
+  {
+    ledc_timer_config_t ledc_timer;
+    memset(&ledc_timer, 0, sizeof(ledc_timer));
+    ledc_timer.duty_resolution = CONFIG_BEEP_DRES;
+    ledc_timer.freq_hz = CONFIG_BEEP_FREQ;           
+    ledc_timer.speed_mode = CONFIG_BEEP_MODE;
+    ledc_timer.timer_num = CONFIG_BEEP_TIMER;
+    ledc_timer_config(&ledc_timer);
+  };
+
   ledc_channel_config_t ledc_channel;
   memset(&ledc_channel, 0, sizeof(ledc_channel));
   ledc_channel.channel = CONFIG_BEEP_CHANNEL;
@@ -58,30 +61,34 @@ void beepTaskExec(void *pvParameters)
   ledc_channel.speed_mode = CONFIG_BEEP_MODE;
   ledc_channel.timer_sel = CONFIG_BEEP_TIMER;
   ledc_channel_config(&ledc_channel);
-  // Initialize fade service
+
   ledc_fade_func_install(0);
   
+  static beep_data_t data;
+  static TickType_t xLastWakeTime;
   while (1) {
     if (xQueueReceive(_beepQueue, &data, portMAX_DELAY) == pdPASS) {
       xLastWakeTime = xTaskGetTickCount();
-      for (uint8_t i = 0; i < data.count; i++) {
-        // Turn on the sound
-        esp_task_wdt_reset();
-        ledc_set_freq(ledc_channel.speed_mode, ledc_channel.timer_sel, data.frequency);
-        ledc_set_duty(ledc_channel.speed_mode, ledc_channel.channel, data.duration);
+      for (uint8_t i = data.count; i > 0; i--) {
+        // Воспроизводим частоту 1
+        ledc_set_freq(ledc_channel.speed_mode, ledc_channel.timer_sel, data.frequency1);
+        ledc_set_duty(ledc_channel.speed_mode, ledc_channel.channel, data.duty);
         ledc_update_duty(ledc_channel.speed_mode, ledc_channel.channel);
-        // We are waiting for the specified time
         vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(data.duration));
-        // Turn off the sound
-        esp_task_wdt_reset();
-        ledc_set_duty(ledc_channel.speed_mode, ledc_channel.channel, 0);
-        ledc_update_duty(ledc_channel.speed_mode, ledc_channel.channel);
-        // If this is not the last sound in the series, then we are waiting again
-        if (i < data.count - 1) {
-          esp_task_wdt_reset();
-          vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(data.duration));
+
+        // Воспроизводим частоту 2 или отключаем звук
+        if (data.frequency2 > 0) {
+          ledc_set_freq(ledc_channel.speed_mode, ledc_channel.timer_sel, data.frequency2);
+          ledc_set_duty(ledc_channel.speed_mode, ledc_channel.channel, data.duty);
+        } else {
+          ledc_set_duty(ledc_channel.speed_mode, ledc_channel.channel, 0);
         };
+        ledc_update_duty(ledc_channel.speed_mode, ledc_channel.channel);
+        vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(data.duration));
       };
+      // Серия закончена, отключаем звук
+      ledc_set_duty(ledc_channel.speed_mode, ledc_channel.channel, 0);
+      ledc_update_duty(ledc_channel.speed_mode, ledc_channel.channel);
     };
   };
 
@@ -134,15 +141,17 @@ void beepTaskDelete()
   };
 }
 
-bool beepTaskSend(const uint16_t frequency, const uint16_t duration, const uint8_t count)
+bool beepTaskSend(const uint16_t frequency1, const uint16_t frequency2, const uint16_t duration, const uint8_t count, const uint16_t duty)
 {
-  if (_beepQueue && (frequency > 0) && (duration > 0) && (count > 0)) {
-    static beep_data_t data;
-    data.frequency = frequency;
+  if (_beepQueue && (frequency1 > 0) && (duration > 0) && (duty > 0) && (count > 0)) {
+    beep_data_t data;
+    data.frequency1 = frequency1;
+    data.frequency2 = frequency2;
     data.duration = duration;
     data.count = count;
+    data.duty = duty;
 
-    if (xQueueSend( _beepQueue, &data, CONFIG_BEEP_QUEUE_WAIT) == pdPASS) {
+    if (xQueueSend(_beepQueue, &data, CONFIG_BEEP_QUEUE_WAIT) == pdPASS) {
       return true;
     };
   };
