@@ -53,17 +53,17 @@ void beepTaskExec(void *pvParameters)
     ledc_timer_config(&ledc_timer);
   };
 
-  ledc_channel_config_t ledc_channel;
-  memset(&ledc_channel, 0, sizeof(ledc_channel));
-  ledc_channel.channel = CONFIG_BEEP_CHANNEL;
-  ledc_channel.duty = 0;
-  ledc_channel.gpio_num = _pinBuzzer;
-  ledc_channel.speed_mode = CONFIG_BEEP_MODE;
-  ledc_channel.timer_sel = CONFIG_BEEP_TIMER;
-  ledc_channel_config(&ledc_channel);
+  {
+    ledc_channel_config_t ledc_channel;
+    memset(&ledc_channel, 0, sizeof(ledc_channel));
+    ledc_channel.channel = CONFIG_BEEP_CHANNEL;
+    ledc_channel.duty = 0;
+    ledc_channel.gpio_num = _pinBuzzer;
+    ledc_channel.speed_mode = CONFIG_BEEP_MODE;
+    ledc_channel.timer_sel = CONFIG_BEEP_TIMER;
+    ledc_channel_config(&ledc_channel);
+  };
 
-  ledc_fade_func_install(0);
-  
   static beep_data_t data;
   static TickType_t xLastWakeTime;
   while (1) {
@@ -71,24 +71,24 @@ void beepTaskExec(void *pvParameters)
       xLastWakeTime = xTaskGetTickCount();
       for (uint8_t i = data.count; i > 0; i--) {
         // Воспроизводим частоту 1
-        ledc_set_freq(ledc_channel.speed_mode, ledc_channel.timer_sel, data.frequency1);
-        ledc_set_duty(ledc_channel.speed_mode, ledc_channel.channel, data.duty);
-        ledc_update_duty(ledc_channel.speed_mode, ledc_channel.channel);
+        ledc_set_freq(CONFIG_BEEP_MODE, CONFIG_BEEP_TIMER, data.frequency1);
+        ledc_set_duty(CONFIG_BEEP_MODE, CONFIG_BEEP_CHANNEL, data.duty);
+        ledc_update_duty(CONFIG_BEEP_MODE, CONFIG_BEEP_CHANNEL);
         vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(data.duration));
 
         // Воспроизводим частоту 2 или отключаем звук
         if (data.frequency2 > 0) {
-          ledc_set_freq(ledc_channel.speed_mode, ledc_channel.timer_sel, data.frequency2);
-          ledc_set_duty(ledc_channel.speed_mode, ledc_channel.channel, data.duty);
+          ledc_set_freq(CONFIG_BEEP_MODE, CONFIG_BEEP_TIMER, data.frequency2);
+          ledc_set_duty(CONFIG_BEEP_MODE, CONFIG_BEEP_CHANNEL, data.duty);
         } else {
-          ledc_set_duty(ledc_channel.speed_mode, ledc_channel.channel, 0);
+          ledc_set_duty(CONFIG_BEEP_MODE, CONFIG_BEEP_CHANNEL, 0);
         };
-        ledc_update_duty(ledc_channel.speed_mode, ledc_channel.channel);
+        ledc_update_duty(CONFIG_BEEP_MODE, CONFIG_BEEP_CHANNEL);
         vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(data.duration));
       };
       // Серия закончена, отключаем звук
-      ledc_set_duty(ledc_channel.speed_mode, ledc_channel.channel, 0);
-      ledc_update_duty(ledc_channel.speed_mode, ledc_channel.channel);
+      ledc_set_duty(CONFIG_BEEP_MODE, CONFIG_BEEP_CHANNEL, 0);
+      ledc_update_duty(CONFIG_BEEP_MODE, CONFIG_BEEP_CHANNEL);
     };
   };
 
